@@ -1,10 +1,11 @@
 use std::str::FromStr;
 
 use nom::{
-    character::complete::{anychar, digit1},
-    combinator::{eof, map_res, opt},
+    character::complete::{anychar, digit1, one_of},
+    combinator::{eof, map_res, opt, recognize},
     error::Error,
     multi::many1,
+    sequence::tuple,
     Finish, IResult,
 };
 
@@ -31,64 +32,15 @@ impl FromStr for Duration {
 }
 
 fn parse_durations(input: &str) -> IResult<&str, time::Duration> {
-    // seconds, minutes, hours, days, weeks
-    let (input, sign) = parse_optional_sign(input)?;
     let (input, durations) = many1(parse_single_duration)(input)?;
     eof(input)?;
     let duration = durations.iter().sum();
-    let duration = sign.apply(duration);
     Ok((input, duration))
 }
 
-fn parse_optional_sign(input: &str) -> IResult<&str, Sign> {
-    let sign = map_res(anychar, Sign::try_from);
-    let (input, sign) = opt(sign)(input)?;
-    let sign = sign.unwrap_or_default();
-    Ok((input, sign))
-}
-
-#[derive(Default, Debug)]
-enum Sign {
-    #[default]
-    Positive,
-    Negative,
-}
-
-impl Sign {
-    fn apply(&self, duration: time::Duration) -> time::Duration {
-        match self {
-            Sign::Positive => duration,
-            Sign::Negative => -duration,
-        }
-    }
-}
-
-const CHAR_PLUS: char = '+';
-const CHAR_MINUS: char = '-';
-
-impl TryFrom<char> for Sign {
-    type Error = String;
-
-    fn try_from(value: char) -> Result<Self, Self::Error> {
-        match value {
-            CHAR_PLUS => Ok(Self::Positive),
-            CHAR_MINUS => Ok(Self::Negative),
-            char => Err(format!("Invalid sign: `{}`", char)),
-        }
-    }
-}
-
-impl From<Sign> for char {
-    fn from(sign: Sign) -> Self {
-        match sign {
-            Sign::Positive => CHAR_PLUS,
-            Sign::Negative => CHAR_MINUS,
-        }
-    }
-}
-
 fn parse_single_duration(input: &str) -> IResult<&str, time::Duration> {
-    let (input, duration) = map_res(digit1, str::parse)(input)?;
+    let (input, duration) =
+        map_res(recognize(tuple((opt(one_of("+-")), digit1))), str::parse)(input)?;
     let (input, unit) = map_res(anychar, TimeUnit::try_from)(input)?;
     let duration = unit.to_duration(duration);
     Ok((input, duration))
