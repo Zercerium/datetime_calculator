@@ -1,11 +1,10 @@
 use std::str::FromStr;
 
 use nom::{
-    character::complete::{anychar, digit1, one_of},
-    combinator::{eof, map_res, opt, recognize},
+    character::complete::{anychar, digit1},
+    combinator::{eof, map_res, opt},
     error::Error,
     multi::many1,
-    sequence::tuple,
     Finish, IResult,
 };
 
@@ -34,16 +33,26 @@ impl FromStr for Duration {
 fn parse_durations(input: &str) -> IResult<&str, time::Duration> {
     let (input, durations) = many1(parse_single_duration)(input)?;
     eof(input)?;
-    let duration = durations.iter().sum();
+    let (duration, _) = durations.into_iter().fold(
+        (time::Duration::ZERO, Sign::Positive),
+        |mut acc, (sign, mut duration)| {
+            acc.1 = sign.unwrap_or(acc.1);
+            if acc.1 == Sign::Negative {
+                duration = -duration;
+            }
+            acc.0 += duration;
+            acc
+        },
+    );
     Ok((input, duration))
 }
 
-fn parse_single_duration(input: &str) -> IResult<&str, time::Duration> {
-    let (input, duration) =
-        map_res(recognize(tuple((opt(one_of("+-")), digit1))), str::parse)(input)?;
+fn parse_single_duration(input: &str) -> IResult<&str, (Option<Sign>, time::Duration)> {
+    let (input, sign) = opt(map_res(anychar, Sign::try_from))(input)?;
+    let (input, duration) = map_res(digit1, str::parse)(input)?;
     let (input, unit) = map_res(anychar, TimeUnit::try_from)(input)?;
     let duration = unit.to_duration(duration);
-    Ok((input, duration))
+    Ok((input, (sign, duration)))
 }
 
 const CHAR_SECOND: char = 's';
@@ -101,15 +110,45 @@ impl TimeUnit {
     }
 }
 
+#[derive(PartialEq)]
+enum Sign {
+    Positive,
+    Negative,
+}
+
+impl TryFrom<char> for Sign {
+    type Error = String;
+
+    fn try_from(value: char) -> Result<Self, Self::Error> {
+        match value {
+            '+' => Ok(Self::Positive),
+            '-' => Ok(Self::Negative),
+            char => Err(format!("Invalid sign: `{}`", char)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
 
     #[test]
     fn test_parse_duration() {
-        let input = "-10s".to_string();
-        let expected = time::Duration::seconds(-10);
-        let actual = input.parse::<Duration>().unwrap().0;
-        assert_eq!(expected, actual);
+        let test_cases = vec![
+            ("1s", time::Duration::seconds(1)),
+            ("1m", time::Duration::minutes(1)),
+            ("1h", time::Duration::hours(1)),
+            ("1d", time::Duration::days(1)),
+            ("1w", time::Duration::weeks(1)),
+            ("-1s1m", time::Duration::seconds(-61)),
+            ("-1m", time::Duration::minutes(-1)),
+            ("-1h", time::Duration::hours(-1)),
+            ("-1d", time::Duration::days(-1)),
+            ("-1w", time::Duration::weeks(-1)),
+        ];
+        for (input, expected) in test_cases {
+            let actual = input.parse::<Duration>().unwrap().0;
+            assert_eq!(expected, actual);
+        }
     }
 }
