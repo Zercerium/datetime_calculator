@@ -4,7 +4,7 @@ use nom::{
     character::complete::{anychar, digit1},
     combinator::{eof, map_res, opt},
     error::Error,
-    multi::many1,
+    multi::fold_many1,
     Finish, IResult,
 };
 
@@ -31,10 +31,9 @@ impl FromStr for Duration {
 }
 
 fn parse_durations(input: &str) -> IResult<&str, time::Duration> {
-    let (input, durations) = many1(parse_single_duration)(input)?;
-    eof(input)?;
-    let (duration, _) = durations.into_iter().fold(
-        (time::Duration::ZERO, Sign::Positive),
+    let (input, (duration, _)) = fold_many1(
+        parse_single_duration,
+        || (time::Duration::ZERO, Sign::Positive),
         |mut acc, (sign, mut duration)| {
             acc.1 = sign.unwrap_or(acc.1);
             if acc.1 == Sign::Negative {
@@ -43,7 +42,8 @@ fn parse_durations(input: &str) -> IResult<&str, time::Duration> {
             acc.0 += duration;
             acc
         },
-    );
+    )(input)?;
+    eof(input)?;
     Ok((input, duration))
 }
 
