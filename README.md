@@ -33,10 +33,12 @@ TODO
 - [ ] possibility to specify output format
 - [ ] allow different input formats
 - [ ] use the same output format as default which was used for the input
+- [ ] allow specially defined formats, in config
 
 ### normal prio
 
 - [ ] better error messages (for example if the time format parsing from time doesn't work, how to pass the value on to nom?)
+- [ ] better cargo help message
 
 ### lower prio
 
